@@ -26,3 +26,7 @@ known-first-party = ["resvg_py"]
 [build-system]
 requires = ["maturin==1.4.0"]
 build-backend = "maturin"
+
+[tool.maturin]
+python-source = "python"
+features = ["pyo3/extension-module"]
