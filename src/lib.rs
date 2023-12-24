@@ -1,7 +1,9 @@
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
-use resvg::tiny_skia::Pixmap;
-use usvg::{Size, Tree, TreeParsing};
+use resvg::Tree as RenderTree;
+use resvg::tiny_skia::{Pixmap, Transform};
+use resvg::usvg::{Options, TreeTextToPath, Size, Tree, TreeParsing, fontdb};
+
 
 /// SVG parsing and rendering options.
 ///
@@ -14,7 +16,7 @@ pub struct SVGOptions {
     /// Impacts units conversion.
     ///
     /// Default: 96.0
-    dpi: f64,
+    dpi: f32,
 
     /// Directory that will be used during relative paths resolving.
     ///
@@ -28,13 +30,13 @@ pub struct SVGOptions {
     /// the `width` is relative.
     ///
     /// Default: 100.0
-    default_width: f64,
+    default_width: f32,
 
     /// Default viewport height to assume if there is no `viewBox` attribute and
     /// the `height` is relative.
     ///
     /// Default: 100.0
-    default_height: f64,
+    default_height: f32,
 }
 
 #[pymethods]
@@ -42,9 +44,9 @@ impl SVGOptions {
     #[new]
     #[pyo3(signature = (*, dpi = 96.0, default_width = 100.0, default_height = 100.0, resources_dir = None))]
     fn new(
-        dpi: f64,
-        default_width: f64,
-        default_height: f64,
+        dpi: f32,
+        default_width: f32,
+        default_height: f32,
         resources_dir: Option<std::path::PathBuf>,
     ) -> Self {
         Self {
@@ -84,25 +86,30 @@ impl Resvg {
         let mut pixmap = Pixmap::new(width, height).unwrap();
 
         let options = if let Some(options) = &self.options {
-            usvg::Options {
+            Options {
                 dpi: options.dpi,
-                default_size: Size::new(options.default_width, options.default_height).unwrap(),
+                default_size: Size::from_wh(options.default_width, options.default_height).unwrap(),
                 resources_dir: options.resources_dir.clone(),
-                ..usvg::Options::default()
+                ..Options::default()
             }
         } else {
-            usvg::Options::default()
+            Options::default()
         };
 
-        let tree = Tree::from_str(svg, &options).unwrap();
+        let mut tree = Tree::from_str(svg, &options).unwrap();
 
-        resvg::render(
-            &tree,
-            resvg::FitTo::Original,
-            tiny_skia::Transform::default(),
-            pixmap.as_mut(),
-        )
-        .unwrap();
+        let mut fontdb = fontdb::Database::new();
+
+        fontdb.load_system_fonts();
+
+        tree.convert_text(&fontdb);
+    
+        let render_tree = RenderTree::from_usvg(&tree);
+
+        render_tree.render(
+            Transform::default(),
+            &mut pixmap.as_mut(),
+        );
 
         RenderedImage { pixmap }
     }
